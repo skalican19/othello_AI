@@ -3,6 +3,8 @@
 #include <string>
 #include <algorithm>
 #include <vector>
+#include <limits>
+#include <array>
 
 constexpr size_t BOARD_SIZE = 8; 
 
@@ -73,6 +75,111 @@ std::vector<move> find_moves(const std::string state, const bool color) {
     }
 
     return moves;
+}
+
+std::string state_from_move(std::string state, move move, bool player) {
+    if (player) {
+        state[move.x * BOARD_SIZE + move.y] = 'O';
+    }
+    else {
+        state[move.x * BOARD_SIZE + move.y] = 'X';  
+    }
+    return state;
+}
+
+float count_heuristic(const std::string state) {
+    int white = 0;
+    int black = 0;
+    for (const auto& c : state) {
+        if (c == 'X') black++;
+        else if (c == 'O') white++;
+    }
+    return 100.f * static_cast<float>(white - black) / static_cast<float>(white + black);
+}
+
+float mobility_heuristic(const std::string state) {
+    auto white_moves = find_moves(state, true);
+    auto black_moves = find_moves(state, false);
+
+    if (white_moves.size() + black_moves.size() != 0)
+        return 100.f * static_cast<float>(white_moves.size() - black_moves.size()) / static_cast<float>(white_moves.size() + black_moves.size());
+    
+    return 0.f;
+}
+
+float corner_heuristic(const std::string state) {
+    int white = 0;
+    int black = 0;
+   
+    std::array<move, 4> corners = { move{0,0}, move{0,7}, move{7,0}, move{7,7} };
+    for (const auto& corner : corners) {
+        if (state[corner.x * BOARD_SIZE + corner.y] == 'O') white++;
+        if (state[corner.x * BOARD_SIZE + corner.y] == 'X') white++;
+    }
+
+    if (white + black == 0) {
+        return 0.f;
+    }
+
+    return 100.f * static_cast<float>(white - black) / static_cast<float>(white + black);
+}
+
+float heuristic_val(std::string curr_state) {
+    float count_val = count_heuristic(curr_state);
+    float mobility_val = mobility_heuristic(curr_state);
+    float corner_val = corner_heuristic(curr_state);
+
+    return count_val + mobility_val + corner_val;
+}
+
+float minimax(std::string game_state, int depth, float alpha, float beta, bool player) {
+    std::vector<move> possible_moves = find_moves(game_state, player);
+    if (depth == 0 || possible_moves.empty()) {
+        return heuristic_val(game_state);
+    }
+        
+    if (player) {
+        auto max_value = -std::numeric_limits<float>::infinity();
+        for (const auto& move : possible_moves) {
+
+            const auto new_state = state_from_move(game_state, move, player);
+            auto new_val = minimax(new_state, depth - 1,  alpha, beta, !player);
+
+            if (new_val > max_value) max_value = new_val;
+            if (new_val > alpha) alpha = new_val;
+            if (beta <= alpha) break;
+        }
+
+        return max_value;
+    }
+    else {
+        auto min_value = std::numeric_limits<float>::infinity();
+        for (const auto& move : possible_moves) {
+
+            const auto new_state = state_from_move(game_state, move, player);
+            auto new_val = minimax(new_state, depth - 1, alpha, beta, !player);
+
+            if (new_val < min_value) min_value = new_val;
+            if (new_val < beta) beta = new_val;
+            if (beta <= alpha) break; 
+        }
+        return min_value;
+    }
+
+    return 0.f;
+}
+
+std::string get_response(game game, std::string state) {
+    std::vector<move> moves = find_moves(state, game.player_color);
+
+    for (const auto& move : moves) {
+        auto new_state = state_from_move(state, move, game.player_color);
+        auto move_value = minimax(new_state, 1, -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), !game.player_color);
+        std::cout << move.x << " " << move.y << " " << move_value << std::endl;
+    }
+    
+    return std::string("penis");
+
 }
 
 game init_game_struct(command cmd) {
@@ -151,6 +258,7 @@ int main()
     while (std::getline(std::cin, command))
     {
         std::string result;
+       
         try {
             auto cmd = parse_command(command);
             if (cmd.type == "STOP") { return EXIT_SUCCESS; }
@@ -163,7 +271,7 @@ int main()
                 
             }
             if (game.active && cmd.type == "MOVE") {
-                std::vector<move> moves = find_moves(cmd.move, cmd.player_color);
+                result = get_response(game, cmd.move);
             }
         }
 
