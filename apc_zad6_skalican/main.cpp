@@ -5,8 +5,13 @@
 #include <vector>
 #include <limits>
 #include <array>
+#include <sstream>
+#include <thread>
+#include <chrono>
 
 constexpr size_t BOARD_SIZE = 8; 
+static bool time_elapsed = false;
+static bool minimax_finished = false;
 
 struct game {
     bool active;
@@ -77,13 +82,27 @@ std::vector<move> find_moves(const std::string state, const bool color) {
     return moves;
 }
 
-std::string state_from_move(std::string state, move move, bool player) {
-    if (player) {
-        state[move.x * BOARD_SIZE + move.y] = 'O';
-    }
-    else {
-        state[move.x * BOARD_SIZE + move.y] = 'X';  
-    }
+std::string state_from_move(std::string state, move next_move, bool player) {
+    const std::array<std::pair<int,int>, 8> directions = { std::pair{-1,-1}, {-1,1}, {-1,0}, {0,-1}, {0,1}, {1,-1}, {1,0}, {1,1} };
+    const auto c_op = player ? 'X' : 'O';
+    const auto c_self = !player ? 'X' : 'O';
+
+    state[next_move.x * BOARD_SIZE + next_move.y] = c_self;
+
+    for (const auto& dir : directions) {
+        if (check_direction(state, player, next_move, dir.first, dir.second)) {
+            
+            size_t x = next_move.x + dir.first;
+            size_t y = next_move.y + dir.second;
+
+            while (x < BOARD_SIZE && y < BOARD_SIZE && state[x * BOARD_SIZE + y] == c_op) {
+                state[x * BOARD_SIZE + y] = c_self;
+                x += dir.first;
+                y += dir.second;
+            }
+        }
+    }   
+       
     return state;
 }
 
@@ -114,7 +133,7 @@ float corner_heuristic(const std::string state) {
     std::array<move, 4> corners = { move{0,0}, move{0,7}, move{7,0}, move{7,7} };
     for (const auto& corner : corners) {
         if (state[corner.x * BOARD_SIZE + corner.y] == 'O') white++;
-        if (state[corner.x * BOARD_SIZE + corner.y] == 'X') white++;
+        if (state[corner.x * BOARD_SIZE + corner.y] == 'X') black++;
     }
 
     if (white + black == 0) {
@@ -129,63 +148,88 @@ float heuristic_val(std::string curr_state) {
     float mobility_val = mobility_heuristic(curr_state);
     float corner_val = corner_heuristic(curr_state);
 
-    return count_val + mobility_val + corner_val;
+    return 25*count_val + 5*mobility_val + 30*corner_val;
 }
 
-float minimax(std::string game_state, int depth, float alpha, float beta, bool player) {
+std::pair<float, move> minimax(std::string game_state, int depth, float alpha, float beta, bool player) {
+    if (depth == 0 || time_elapsed) {
+        return { heuristic_val(game_state), {0,0} };
+    }
+    
     std::vector<move> possible_moves = find_moves(game_state, player);
-    if (depth == 0 || possible_moves.empty()) {
-        return heuristic_val(game_state);
+    if (possible_moves.size() == 0) {
+        return { heuristic_val(game_state), {0,0} };
     }
         
     if (player) {
         auto max_value = -std::numeric_limits<float>::infinity();
+        move best_move = { 0,0 };
         for (const auto& move : possible_moves) {
 
             const auto new_state = state_from_move(game_state, move, player);
             auto new_val = minimax(new_state, depth - 1,  alpha, beta, !player);
 
-            if (new_val > max_value) max_value = new_val;
-            if (new_val > alpha) alpha = new_val;
+            if (new_val.first > max_value) {
+                max_value = new_val.first;
+                best_move = move;
+            }
+            if (new_val.first > alpha) alpha = new_val.first;
             if (beta <= alpha) break;
         }
 
-        return max_value;
+        return { max_value, best_move };
     }
     else {
         auto min_value = std::numeric_limits<float>::infinity();
+        move best_move = { 0,0 };
+
         for (const auto& move : possible_moves) {
 
             const auto new_state = state_from_move(game_state, move, player);
             auto new_val = minimax(new_state, depth - 1, alpha, beta, !player);
 
-            if (new_val < min_value) min_value = new_val;
-            if (new_val < beta) beta = new_val;
+            if (new_val.first < min_value) {
+                min_value = new_val.first;
+                best_move = move;
+            };
+            if (new_val.first < beta) beta = new_val.first;
             if (beta <= alpha) break; 
         }
-        return min_value;
+        return { min_value, best_move };
     }
+}
 
-    return 0.f;
+void timer(float move_time) {
+    float time = 0;
+    while (time < move_time && !minimax_finished) {
+        time += 0.25f;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        std::cout << time << std::endl;
+    }
+    time_elapsed = true;
 }
 
 std::string get_response(game game, std::string state) {
-    std::vector<move> moves = find_moves(state, game.player_color);
+    const std::array<char, 8> convert = { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H' };
 
-    for (const auto& move : moves) {
-        auto new_state = state_from_move(state, move, game.player_color);
-        auto move_value = minimax(new_state, 1, -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), !game.player_color);
-        std::cout << move.x << " " << move.y << " " << move_value << std::endl;
-    }
+    std::thread t(timer, game.move_time);
+
+    auto result = minimax(state, 25, -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), !game.player_color);
+    minimax_finished = true;
+
+    t.join();
     
-    return std::string("penis");
+    std::stringstream response;
+    response << result.second.x << convert[result.second.y] << std::endl;
+
+    return response.str();
 
 }
 
 game init_game_struct(command cmd) {
     game game{ true, cmd.player_color, cmd.time };
 
-    if (!cmd.player_color)
+    if (cmd.player_color)
         game.last_state = std::string("---------------------------OX------XO---------------------------");
 
     return game;
@@ -265,8 +309,8 @@ int main()
             if (cmd.type == "START" && !game.active) {
                 game = init_game_struct(cmd);
                 
-                if (!game.player_color) {
-                    //make a move
+                if (game.player_color) {
+                    result = get_response(game, game.last_state);
                 }
                 
             }
