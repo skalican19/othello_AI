@@ -11,11 +11,11 @@
 
 constexpr size_t BOARD_SIZE = 8; 
 static bool time_elapsed = false;
-static bool minimax_finished = false;
+static bool process_finished = false;
 
 struct game {
     bool active;
-    bool player_color; //0 - black, 1 - white
+    bool bot_color; //0 - black, 1 - white
     float move_time;
     std::string last_state;    
 };
@@ -23,7 +23,7 @@ struct game {
 struct command {
     std::string type; //type of command
     std::string move; 
-    bool player_color;
+    bool bot_color;
     float time;
 };
 
@@ -153,12 +153,12 @@ float heuristic_val(std::string curr_state) {
 
 std::pair<float, move> minimax(std::string game_state, int depth, float alpha, float beta, bool player) {
     if (depth == 0 || time_elapsed) {
-        return { heuristic_val(game_state), {0,0} };
+        return { heuristic_val(game_state), {BOARD_SIZE,BOARD_SIZE} };
     }
     
     std::vector<move> possible_moves = find_moves(game_state, player);
     if (possible_moves.size() == 0) {
-        return { heuristic_val(game_state), {0,0} };
+        return { heuristic_val(game_state), {BOARD_SIZE,BOARD_SIZE} };
     }
         
     if (player) {
@@ -199,44 +199,48 @@ std::pair<float, move> minimax(std::string game_state, int depth, float alpha, f
     }
 }
 
-void timer(float move_time) {
+void timer(float move_time) {    
     float time = 0;
-    while (time < move_time && !minimax_finished) {
+    while (time < move_time && !process_finished) {
         time += 0.25f;
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
-        std::cout << time << std::endl;
     }
+
     time_elapsed = true;
 }
 
-std::string get_response(game game, std::string state) {
+std::string get_response(game& game, std::string state) {
     const std::array<char, 8> convert = { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H' };
+    process_finished = false;
+    time_elapsed = false;
 
     std::thread t(timer, game.move_time);
 
-    auto result = minimax(state, 25, -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), !game.player_color);
-    minimax_finished = true;
+    auto result = minimax(state, 4, -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), game.bot_color);
+    process_finished = true;
 
     t.join();
-    
+
+
     std::stringstream response;
-    response << result.second.x << convert[result.second.y] << std::endl;
+    if (result.second.x == 10) {
+        return "no move";
+    }
+
+    response << convert[result.second.y] << result.second.x<< std::endl;
+
+    game.last_state = state_from_move(state, result.second, game.bot_color);
 
     return response.str();
-
 }
 
 game init_game_struct(command cmd) {
-    game game{ true, cmd.player_color, cmd.time };
+    game game{ true, cmd.bot_color, cmd.time };
 
-    if (cmd.player_color)
+    if (!cmd.bot_color)
         game.last_state = std::string("---------------------------OX------XO---------------------------");
 
     return game;
-}
-
-bool move_valid(std::string move) {
-    return true;
 }
 
 command parse_command(const std::string input) {
@@ -269,8 +273,8 @@ command parse_command(const std::string input) {
         if (params[1] != ' ') { throw std::string("Unsupported command."); }
 
         //player color either black or white
-        if (params[0] == 'B') { cmd.player_color = false; }
-        else if ((params[0] == 'W')) { cmd.player_color = true; }
+        if (params[0] == 'B') { cmd.bot_color = false; }
+        else if ((params[0] == 'W')) { cmd.bot_color = true; }
         else { throw std::string("Unsupported command."); }
 
         ws_pos = params.substr(1).find_first_not_of(" ");
@@ -284,8 +288,8 @@ command parse_command(const std::string input) {
     else if (cmd_type == "MOVE") {
         cmd.type = cmd_type;
         
-        if (params.size() != 64 && move_valid(params)) { throw std::string("Invalid move."); }
-
+        //if (params.size() != 64) { throw std::string("Invalid move."); }
+        
         cmd.move = params;
     }
     else {
@@ -299,23 +303,42 @@ int main()
 {
     std::string command;
     game game = { false };
+
     while (std::getline(std::cin, command))
     {
-        std::string result;
-       
+        std::string result;    
+        
         try {
             auto cmd = parse_command(command);
             if (cmd.type == "STOP") { return EXIT_SUCCESS; }
             if (cmd.type == "START" && !game.active) {
                 game = init_game_struct(cmd);
                 
-                if (game.player_color) {
+                if (!game.bot_color) {
                     result = get_response(game, game.last_state);
                 }
                 
             }
             if (game.active && cmd.type == "MOVE") {
-                result = get_response(game, cmd.move);
+   
+                std::vector<move> possible_moves;
+
+                while (possible_moves.empty()) {
+                    result = get_response(game, cmd.move);
+                    possible_moves = find_moves(game.last_state, !game.bot_color);
+                }
+                              
+                /*else {
+                    int i = std::stoi(cmd.move);
+                    size_t y = i % 10;
+                    i /= 10;
+                    size_t x = i % 10;
+                    move move = { x, y };
+                    std::string new_state = state_from_move(game.last_state, move, !game.bot_color);
+                    std::cout << new_state << std::endl;
+                    result = get_response(game, new_state);
+                }*/
+                
             }
         }
 
@@ -325,7 +348,9 @@ int main()
         }
         
         std::cout << result << std::endl;
-    }
 
+        
+    }
+    
     return EXIT_SUCCESS;
 }
