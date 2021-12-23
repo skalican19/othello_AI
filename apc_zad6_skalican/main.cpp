@@ -288,7 +288,7 @@ command parse_command(const std::string input) {
     else if (cmd_type == "MOVE") {
         cmd.type = cmd_type;
         
-        //if (params.size() != 64) { throw std::string("Invalid move."); }
+        if (params.size() != 64) { throw std::string("Invalid move."); }
         
         cmd.move = params;
     }
@@ -328,18 +328,11 @@ int main()
                     result = get_response(game, cmd.move);
                     possible_moves = find_moves(game.last_state, !game.bot_color);
                 }
-                              
-                /*else {
-                    int i = std::stoi(cmd.move);
-                    size_t y = i % 10;
-                    i /= 10;
-                    size_t x = i % 10;
-                    move move = { x, y };
-                    std::string new_state = state_from_move(game.last_state, move, !game.bot_color);
-                    std::cout << new_state << std::endl;
-                    result = get_response(game, new_state);
-                }*/
-                
+                                              
+            }
+            else {
+                std::clog << "Game has not started yet" << std::endl;
+                return EXIT_FAILURE;
             }
         }
 
