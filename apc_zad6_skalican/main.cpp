@@ -227,7 +227,7 @@ std::string get_response(game& game, std::string state) {
         return "no move";
     }
 
-    response << convert[result.second.y] << result.second.x<< std::endl;
+    response << convert[result.second.y] << result.second.x;
 
     game.last_state = state_from_move(state, result.second, game.bot_color);
 
@@ -317,7 +317,8 @@ int main()
                 if (!game.bot_color) {
                     result = get_response(game, game.last_state);
                 }
-                
+
+                continue;
             }
             if (game.active && cmd.type == "MOVE") {
    
@@ -346,10 +347,9 @@ int main()
             std::clog << msg << std::endl;
             return EXIT_FAILURE;
         }
-        
+         
         std::cout << result << std::endl;
 
-        
     }
     
     return EXIT_SUCCESS;
