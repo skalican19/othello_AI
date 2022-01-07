@@ -3,7 +3,7 @@
 ## Prikazy
 
 ### Start
-START <farba bota> <čas ktorý má bot na odpoveď>
+START \<farba bota> <čas ktorý má bot na odpoveď>
 
 ### Move
 MOVE <zakódovaný stav hry>
