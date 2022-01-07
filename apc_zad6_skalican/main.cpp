@@ -10,6 +10,7 @@
 #include <chrono>
 
 constexpr size_t BOARD_SIZE = 8; 
+constexpr uint8_t depth = 5;
 static bool time_elapsed = false;
 static bool process_finished = false;
 
@@ -109,11 +110,13 @@ std::string state_from_move(std::string state, move next_move, bool player) {
 float count_heuristic(const std::string state) {
     int white = 0;
     int black = 0;
+    int empty = 0;
     for (const auto& c : state) {
         if (c == 'X') black++;
         else if (c == 'O') white++;
+        else empty++;
     }
-    return 100.f * static_cast<float>(white - black) / static_cast<float>(white + black);
+    return 100.f * static_cast<float>(white - black) / static_cast<float>(white + black) * (empty/16);
 }
 
 float mobility_heuristic(const std::string state) {
@@ -148,11 +151,11 @@ float heuristic_val(std::string curr_state) {
     float mobility_val = mobility_heuristic(curr_state);
     float corner_val = corner_heuristic(curr_state);
 
-    return 25*count_val + 5*mobility_val + 30*corner_val;
+    return 25*count_val + 5*mobility_val + 40*corner_val;
 }
 
-std::pair<float, move> minimax(std::string game_state, int depth, float alpha, float beta, bool player) {
-    if (depth == 0 || time_elapsed) {
+std::pair<float, move> minimax(std::string game_state, int curr_depth, float alpha, float beta, bool player) {
+    if (curr_depth == 0 || time_elapsed) {
         return { heuristic_val(game_state), {BOARD_SIZE,BOARD_SIZE} };
     }
     
@@ -163,11 +166,11 @@ std::pair<float, move> minimax(std::string game_state, int depth, float alpha, f
         
     if (player) {
         auto max_value = -std::numeric_limits<float>::infinity();
-        move best_move = { 0,0 };
+        move best_move = { BOARD_SIZE,BOARD_SIZE };
         for (const auto& move : possible_moves) {
 
             const auto new_state = state_from_move(game_state, move, player);
-            auto new_val = minimax(new_state, depth - 1,  alpha, beta, !player);
+            auto new_val = minimax(new_state, curr_depth - 1,  alpha, beta, !player);
 
             if (new_val.first > max_value) {
                 max_value = new_val.first;
@@ -181,12 +184,12 @@ std::pair<float, move> minimax(std::string game_state, int depth, float alpha, f
     }
     else {
         auto min_value = std::numeric_limits<float>::infinity();
-        move best_move = { 0,0 };
+        move best_move = { BOARD_SIZE,BOARD_SIZE };
 
         for (const auto& move : possible_moves) {
 
             const auto new_state = state_from_move(game_state, move, player);
-            auto new_val = minimax(new_state, depth - 1, alpha, beta, !player);
+            auto new_val = minimax(new_state, curr_depth - 1, alpha, beta, !player);
 
             if (new_val.first < min_value) {
                 min_value = new_val.first;
@@ -200,7 +203,7 @@ std::pair<float, move> minimax(std::string game_state, int depth, float alpha, f
 }
 
 void timer(float move_time) {    
-    float time = 0;
+    float time = 0.25f;
     while (time < move_time && !process_finished) {
         time += 0.25f;
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
@@ -216,22 +219,31 @@ std::string get_response(game& game, std::string state) {
 
     std::thread t(timer, game.move_time);
 
-    auto result = minimax(state, 4, -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), game.bot_color);
+    auto result = minimax(state, depth, -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), game.bot_color);
     process_finished = true;
 
     t.join();
 
 
     std::stringstream response;
-    if (result.second.x == 10) {
-        return "no move";
+    if (result.second.x == BOARD_SIZE) {
+        throw std::string("No move");
     }
 
-    response << convert[result.second.y] << result.second.x;
+    response << convert[result.second.y] << result.second.x + 1;
 
     game.last_state = state_from_move(state, result.second, game.bot_color);
 
     return response.str();
+}
+
+bool move_valid(std::string s) {
+    for (const auto& c : s) {
+        if (c != 'O' && c != 'X' && c != '-') {
+            return false;
+        }
+    }
+    return true;
 }
 
 game init_game_struct(command cmd) {
@@ -279,16 +291,31 @@ command parse_command(const std::string input) {
 
         ws_pos = params.substr(1).find_first_not_of(" ");
         params = params.substr(ws_pos + 1);
+        
+        ws_pos = params.find_first_of(" ");
+        auto num = params.substr(0, ws_pos);
+                
+        if (ws_pos != std::string::npos) {
+            if (params.substr(ws_pos).find_first_not_of(" ") != std::string::npos) {
+                throw std::string("Unsupported command.");
+            }
+        }
 
-        if (is_number(params)) {
-            cmd.time = static_cast<float> (std::stoi(params));
+        if (is_number(num)) {
+            cmd.time = static_cast<float> (std::stoi(num));
+            if (cmd.time == 0) {
+                throw std::string("Unsupported command.");
+            }
+        }
+        else {
+            throw std::string("Unsupported command.");
         }
 
     }
     else if (cmd_type == "MOVE") {
         cmd.type = cmd_type;
         
-        if (params.size() != 64) { throw std::string("Invalid move."); }
+        if (params.size() != 64 || !move_valid(params)) { throw std::string("Invalid move."); }
         
         cmd.move = params;
     }
@@ -314,24 +341,19 @@ int main()
             if (cmd.type == "START" && !game.active) {
                 game = init_game_struct(cmd);
                 
-                if (!game.bot_color) {
-                    result = get_response(game, game.last_state);
-                }
-
+                std::cout << "1" << std::endl;
                 continue;
             }
             if (game.active && cmd.type == "MOVE") {
    
                 std::vector<move> possible_moves;
 
-                while (possible_moves.empty()) {
-                    result = get_response(game, cmd.move);
-                    possible_moves = find_moves(game.last_state, !game.bot_color);
-                }
-                                              
+                result = get_response(game, cmd.move);
+                possible_moves = find_moves(game.last_state, !game.bot_color);
+                                    
             }
             else {
-                std::clog << "Game has not started yet" << std::endl;
+              
                 return EXIT_FAILURE;
             }
         }
@@ -340,9 +362,9 @@ int main()
             std::clog << msg << std::endl;
             return EXIT_FAILURE;
         }
-         
-        std::cout << result << std::endl;
 
+        std::cout << result << std::endl;
+       
     }
     
     return EXIT_SUCCESS;
