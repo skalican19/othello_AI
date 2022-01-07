@@ -337,14 +337,14 @@ int main()
         
         try {
             auto cmd = parse_command(command);
-            if (cmd.type == "STOP") { return EXIT_SUCCESS; }
-            if (cmd.type == "START" && !game.active) {
+            if (cmd.type == "STOP" && game.active) { return EXIT_SUCCESS; }
+            else if (cmd.type == "START" && !game.active) {
                 game = init_game_struct(cmd);
                 
                 std::cout << "1" << std::endl;
                 continue;
             }
-            if (game.active && cmd.type == "MOVE") {
+            else if (game.active && cmd.type == "MOVE") {
    
                 std::vector<move> possible_moves;
 
