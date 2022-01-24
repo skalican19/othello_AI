@@ -123,8 +123,8 @@ float mobility_heuristic(const std::string state) {
     auto white_moves = find_moves(state, true);
     auto black_moves = find_moves(state, false);
 
-    if (white_moves.size() + black_moves.size() != 0)
-        return 100.f * static_cast<float>(white_moves.size() - black_moves.size()) / static_cast<float>(white_moves.size() + black_moves.size());
+    if (white_moves.size() + black_moves.size() != 0) 
+        return 100.f * static_cast<float>(static_cast<int>(white_moves.size()) - static_cast<int>(black_moves.size())) / static_cast<float>(white_moves.size() + black_moves.size());
     
     return 0.f;
 }
@@ -178,6 +178,7 @@ std::pair<float, move> minimax(std::string game_state, int curr_depth, float alp
             }
             if (new_val.first > alpha) alpha = new_val.first;
             if (beta <= alpha) break;
+
         }
 
         return { max_value, best_move };
@@ -197,6 +198,7 @@ std::pair<float, move> minimax(std::string game_state, int curr_depth, float alp
             };
             if (new_val.first < beta) beta = new_val.first;
             if (beta <= alpha) break; 
+            
         }
         return { min_value, best_move };
     }
